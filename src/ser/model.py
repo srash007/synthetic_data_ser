@@ -1,0 +1,485 @@
+"""
+SERRegressor
+
+Object-Oriented implementation of the
+Segmentation Expert-Mixture Regularization (SER) framework.
+
+Author
+------
+Sarah Elyane Rashiwa
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+
+from .utils import add_constant
+
+from .segmentation import (
+    segmentation_3conditions_target,
+    segmentation_target_quantiles,
+    iterative_target_trimming,
+    optimize_bias_variance_target,
+    split_by_target_thresholds,
+)
+
+from .selection import train_local_expert
+
+from .blending import blended_predict
+
+from metrics.metrics import metrics_table
+
+
+class SERRegressor:
+    """
+    Segmentation Expert-Mixture Regularization.
+
+    Parameters
+    ----------
+    segmentation : {"A","B","C","D"}
+
+        A : MAD segmentation
+
+        B : Quantile segmentation
+
+        C : Iterative trimming
+
+        D : Bias-Variance optimization
+
+    alpha_ratio : float
+
+        Width of the blending region.
+
+    quantile_bounds : tuple(float,float)
+
+        Quantiles used by method B.
+
+    verbose : bool
+    """
+
+    def __init__(
+        self,
+        segmentation="A",
+        alpha_ratio=0.05,
+        quantile_bounds=(0.15, 0.85),
+        verbose=True,
+    ):
+
+        self.segmentation_method = segmentation
+
+        self.alpha_ratio = alpha_ratio
+
+        self.quantile_bounds = quantile_bounds
+
+        self.verbose = verbose
+
+        # Learned during fit()
+
+        self.global_model = None
+
+        self.segmentation = None
+
+        self.local_experts = None
+
+        self.group_performance = None
+
+        self.alpha = None
+
+    # =====================================================
+    # Global Model
+    # =====================================================
+
+    def _fit_global_model(
+        self,
+        X_train,
+        y_train,
+    ):
+
+        X_design = add_constant(X_train)
+
+        model = sm.OLS(
+            y_train,
+            X_design,
+        ).fit(cov_type="HC3")
+
+        prediction = model.predict(X_design)
+
+        residuals = (
+
+            pd.Series(y_train).reset_index(drop=True)
+
+            -
+
+            pd.Series(prediction).reset_index(drop=True)
+
+        )
+
+        return model, residuals
+
+    # =====================================================
+    # Segmentation
+    # =====================================================
+
+    def _segment(
+        self,
+        X_train,
+        y_train,
+    ):
+
+        method = self.segmentation_method
+
+        if method == "A":
+
+            return segmentation_3conditions_target(y_train)
+
+        elif method == "B":
+
+            q_low, q_up = self.quantile_bounds
+
+            return segmentation_target_quantiles(
+                y_train,
+                q_low=q_low,
+                q_up=q_up,
+            )
+
+        elif method == "C":
+
+            left = iterative_target_trimming(
+                X_train,
+                y_train,
+                side="left",
+            )
+
+            right = iterative_target_trimming(
+                X_train,
+                y_train,
+                side="right",
+            )
+
+            low_thr = (
+
+                left["low_thr"]
+
+                if left
+
+                else np.quantile(y_train, 0.10)
+
+            )
+
+            up_thr = (
+
+                right["up_thr"]
+
+                if right
+
+                else np.quantile(y_train, 0.90)
+
+            )
+
+            groups, idxL, idxC, idxU = split_by_target_thresholds(
+
+                y_train,
+
+                low_thr,
+
+                up_thr,
+
+            )
+
+            return {
+
+                "low_thr": low_thr,
+
+                "up_thr": up_thr,
+
+                "groups": groups,
+
+                "idxL": idxL,
+
+                "idxC": idxC,
+
+                "idxU": idxU,
+
+            }
+
+        elif method == "D":
+
+            best, _ = optimize_bias_variance_target(
+
+                X_train,
+
+                y_train,
+
+            )
+
+            groups, idxL, idxC, idxU = split_by_target_thresholds(
+
+                y_train,
+
+                best["low_thr"],
+
+                best["up_thr"],
+
+            )
+
+            return {
+
+                "low_thr": best["low_thr"],
+
+                "up_thr": best["up_thr"],
+
+                "groups": groups,
+
+                "idxL": idxL,
+
+                "idxC": idxC,
+
+                "idxU": idxU,
+
+            }
+
+        raise ValueError(
+
+            "Unknown segmentation strategy."
+
+        )
+
+    # =====================================================
+    # FIT
+    # =====================================================
+
+    def fit(
+        self,
+        X_train,
+        y_train,
+    ):
+
+        if self.verbose:
+
+            print(
+
+                f"\n===== SER ({self.segmentation_method}) ====="
+
+            )
+
+        self.global_model, residuals = self._fit_global_model(
+
+            X_train,
+
+            y_train,
+
+        )
+
+        self.segmentation = self._segment(
+
+            X_train,
+
+            y_train,
+
+        )
+
+        self.alpha = (
+
+            self.alpha_ratio
+
+            *
+
+            (
+
+                self.segmentation["up_thr"]
+
+                -
+
+                self.segmentation["low_thr"]
+
+            )
+
+        )
+
+        idxL = self.segmentation["idxL"]
+
+        idxC = self.segmentation["idxC"]
+
+        idxU = self.segmentation["idxU"]
+
+        experts = {}
+
+        performances = {}
+
+        for label, idx, tau in [
+
+            ("Lower", idxL, 0.10),
+
+            ("Center", idxC, 0.50),
+
+            ("Upper", idxU, 0.90),
+
+        ]:
+
+            X_group = X_train.iloc[idx]
+
+            y_group = y_train.iloc[idx]
+
+            group_residuals = residuals.iloc[idx].reset_index(drop=True)
+
+            best, perf = train_local_expert(
+
+                X_group,
+
+                y_group,
+
+                label=label,
+
+                tau=tau,
+
+                residuals=group_residuals,
+
+                verbose=self.verbose,
+
+            )
+
+            experts[label] = best
+
+            performances[label] = perf
+
+        if experts["Lower"] is None:
+
+            experts["Lower"] = experts["Center"]
+
+        if experts["Upper"] is None:
+
+            experts["Upper"] = experts["Center"]
+
+        self.local_experts = experts
+
+        self.group_performance = performances
+
+        if self.verbose:
+            self._print_segmentation_summary()
+
+        return self
+
+    # =====================================================
+    # PREDICT
+    # =====================================================
+
+    def predict(
+        self,
+        X_test,
+    ):
+
+        return blended_predict(
+
+            X_test=X_test,
+
+            global_model=self.global_model,
+
+            segmentation=self.segmentation,
+
+            local_experts=self.local_experts,
+
+            alpha=self.alpha,
+
+        )
+
+    # =====================================================
+    # EVALUATE
+    # =====================================================
+
+    def evaluate(
+        self,
+        y_true,
+        y_pred,
+        label="SER",
+    ):
+
+        return metrics_table(
+
+            y_true,
+
+            y_pred,
+
+            label,
+
+        )
+
+    # =====================================================
+    # FIT + PREDICT
+    # =====================================================
+
+    def fit_predict(
+
+        self,
+
+        X_train,
+
+        y_train,
+
+        X_test,
+
+        y_test=None,
+
+    ):
+
+        self.fit(
+
+            X_train,
+
+            y_train,
+
+        )
+
+        prediction = self.predict(
+
+            X_test,
+
+        )
+
+        if y_test is None:
+
+            return prediction
+
+        metrics = self.evaluate(
+
+            y_test,
+
+            prediction,
+
+        )
+
+        return {
+
+            "predictions": prediction,
+
+            "metrics": metrics,
+
+            "segmentation": self.segmentation,
+
+            "local_experts": self.local_experts,
+
+            "group_performance": self.group_performance,
+
+            "global_model": self.global_model,
+
+        }
+    def _print_segmentation_summary(self):
+
+        idxL = self.segmentation["idxL"]
+        idxC = self.segmentation["idxC"]
+        idxU = self.segmentation["idxU"]
+
+        print("\nSegmentation Summary")
+        print("-" * 40)
+
+        print(f"Lower threshold : {self.segmentation['low_thr']:.4f}")
+        print(f"Upper threshold : {self.segmentation['up_thr']:.4f}")
+
+        print()
+
+        print(f"Lower region  : {len(idxL)} observations")
+        print(f"Center region : {len(idxC)} observations")
+        print(f"Upper region  : {len(idxU)} observations")
+
+        print("-" * 40)
