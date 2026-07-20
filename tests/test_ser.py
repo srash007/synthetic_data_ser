@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
-
+from metrics.metrics import regression_metrics
 from ser import SERRegressor
 
 
@@ -41,18 +41,23 @@ ser = SERRegressor(
     verbose=True,
 )
 
-result = ser.fit_predict(
+y_pred = ser.fit_predict(
     X_train,
     y_train,
     X_test,
-    y_test,
 )
 
-print("\n========== Metrics ==========")
-print(result["metrics"])
+metrics = regression_metrics(
+    y_test,
+    y_pred,
+)
 
-print("\n========== Selected Experts ==========")
+print("\nEvaluation")
+print("-" * 50)
 
-for group, expert in result["local_experts"].items():
+for name, value in metrics.items():
+    print(f"{name:<15}: {value:.4f}")
 
-    print(group, "->", expert["name"])
+
+    
+

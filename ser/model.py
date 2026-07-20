@@ -29,9 +29,6 @@ from .selection import train_local_expert
 
 from .blending import blended_predict
 
-from metrics.metrics import metrics_table
-
-
 class SERRegressor:
     """
     Segmentation Expert-Mixture Regularization.
@@ -86,6 +83,8 @@ class SERRegressor:
         self.group_performance = None
 
         self.alpha = None
+        
+        self.summary = {}
 
     # =====================================================
     # Global Model
@@ -356,8 +355,13 @@ class SERRegressor:
 
         self.group_performance = performances
 
+        self._build_summary(
+            X_train,
+            y_train,
+        )
+
         if self.verbose:
-            self._print_segmentation_summary()
+            self.print_summary()
 
         return self
 
@@ -384,102 +388,137 @@ class SERRegressor:
 
         )
 
-    # =====================================================
-    # EVALUATE
-    # =====================================================
-
-    def evaluate(
-        self,
-        y_true,
-        y_pred,
-        label="SER",
-    ):
-
-        return metrics_table(
-
-            y_true,
-
-            y_pred,
-
-            label,
-
-        )
-
-    # =====================================================
-    # FIT + PREDICT
-    # =====================================================
+# =====================================================
+# FIT + PREDICT
+# =====================================================
 
     def fit_predict(
-
         self,
-
         X_train,
-
         y_train,
-
         X_test,
-
-        y_test=None,
-
     ):
+        """
+        Fit the SER model and return predictions.
+
+        Parameters
+        ----------
+        X_train : pandas.DataFrame
+            Training predictors.
+
+        y_train : pandas.Series
+            Training target.
+
+        X_test : pandas.DataFrame
+            Test predictors.
+
+        Returns
+        -------
+        numpy.ndarray
+            Predictions on the test set.
+        """
 
         self.fit(
-
             X_train,
-
             y_train,
-
         )
 
-        prediction = self.predict(
-
+        return self.predict(
             X_test,
-
         )
+        
+    # =====================================================
+# Build Summary
+# =====================================================
 
-        if y_test is None:
-
-            return prediction
-
-        metrics = self.evaluate(
-
-            y_test,
-
-            prediction,
-
-        )
-
-        return {
-
-            "predictions": prediction,
-
-            "metrics": metrics,
-
-            "segmentation": self.segmentation,
-
-            "local_experts": self.local_experts,
-
-            "group_performance": self.group_performance,
-
-            "global_model": self.global_model,
-
-        }
-    def _print_segmentation_summary(self):
+    def _build_summary(
+        self,
+        X_train,
+        y_train,
+    ):
 
         idxL = self.segmentation["idxL"]
         idxC = self.segmentation["idxC"]
         idxU = self.segmentation["idxU"]
 
-        print("\nSegmentation Summary")
-        print("-" * 40)
+        self.summary = {
 
-        print(f"Lower threshold : {self.segmentation['low_thr']:.4f}")
-        print(f"Upper threshold : {self.segmentation['up_thr']:.4f}")
+            "segmentation": self.segmentation_method,
+
+            "alpha_ratio": self.alpha_ratio,
+
+            "alpha": self.alpha,
+
+            "n_samples": len(y_train),
+
+            "n_features": X_train.shape[1],
+
+            "lower_threshold": self.segmentation["low_thr"],
+
+            "upper_threshold": self.segmentation["up_thr"],
+
+            "lower_size": len(idxL),
+
+            "center_size": len(idxC),
+
+            "upper_size": len(idxU),
+
+            "lower_expert": (
+                self.local_experts["Lower"]["name"]
+                if self.local_experts["Lower"] is not None
+                else "Skipped"
+            ),
+
+            "center_expert": (
+                self.local_experts["Center"]["name"]
+                if self.local_experts["Center"] is not None
+                else "Skipped"
+            ),
+
+            "upper_expert": (
+                self.local_experts["Upper"]["name"]
+                if self.local_experts["Upper"] is not None
+                else "Skipped"
+            ),
+        }
+        # =====================================================
+    # Summary
+    # =====================================================
+
+    def print_summary(self):
+
+        s = self.summary
+
+        print("\n" + "=" * 50)
+        print("              SER SUMMARY")
+        print("=" * 50)
+
+        print("\nModel")
+        print("-" * 50)
+        print(f"Segmentation      : SER-{s['segmentation']}")
+        print(f"Alpha ratio       : {s['alpha_ratio']:.3f}")
+        print(f"Alpha             : {s['alpha']:.4f}")
+
+        print("\nDataset")
+        print("-" * 50)
+        print(f"Samples           : {s['n_samples']}")
+        print(f"Features          : {s['n_features']}")
+
+        print("\nSegmentation")
+        print("-" * 50)
+        print(f"Lower threshold   : {s['lower_threshold']:.4f}")
+        print(f"Upper threshold   : {s['upper_threshold']:.4f}")
 
         print()
 
-        print(f"Lower region  : {len(idxL)} observations")
-        print(f"Center region : {len(idxC)} observations")
-        print(f"Upper region  : {len(idxU)} observations")
+        print(f"Lower region      : {s['lower_size']}")
+        print(f"Center region     : {s['center_size']}")
+        print(f"Upper region      : {s['upper_size']}")
 
-        print("-" * 40)
+        print("\nExperts")
+        print("-" * 50)
+        print(f"Lower             : {s['lower_expert']}")
+        print(f"Center            : {s['center_expert']}")
+        print(f"Upper             : {s['upper_expert']}")
+
+        print("=" * 50)

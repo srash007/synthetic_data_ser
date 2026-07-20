@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 from .base import SyntheticGenerator
 from .function import *
 
-class MultimodalGenerator(SyntheticGenerator):
+class MultiModalGenerator(SyntheticGenerator):
     """
     Generate synthetic regression datasets with multimodal target distributions.
 

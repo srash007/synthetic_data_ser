@@ -1,1 +1,2 @@
-from .metrics import metrics_table
+from .regression import *
+from .metrics import *

@@ -12,7 +12,7 @@ Sarah Elyane Rashiwa
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 
@@ -145,3 +145,28 @@ def validate_breakpoints(
         raise ValueError(
             "Breakpoints must be strictly increasing."
         )
+        
+def check_random_state(random_state: Optional[int] = None) -> np.random.RandomState:
+    """
+    Return a NumPy RandomState instance.
+
+    Parameters
+    ----------
+    random_state : None, int or RandomState
+
+    Returns
+    -------
+    RandomState
+    """
+    if random_state is None:
+        return np.random.RandomState()
+
+    if isinstance(random_state, int):
+        return np.random.RandomState(random_state)
+
+    if isinstance(random_state, RandomState):
+        return random_state
+
+    raise TypeError(
+        "random_state must be None, int or numpy.random.RandomState."
+    )
