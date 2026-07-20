@@ -262,6 +262,9 @@ class SERRegressor:
                 f"\n===== SER ({self.segmentation_method}) ====="
 
             )
+            
+        if isinstance(X_train, np.ndarray) : X_train = pd.DataFrame(X_train)
+        if isinstance(y_train, np.ndarray): y_train = pd.Series(y_train)
 
         self.global_model, residuals = self._fit_global_model(
 
@@ -373,7 +376,8 @@ class SERRegressor:
         self,
         X_test,
     ):
-
+        
+        if isinstance(X_test,np.ndarray): X_test = pd.DataFrame(X_test)
         return blended_predict(
 
             X_test=X_test,

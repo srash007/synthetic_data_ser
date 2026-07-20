@@ -76,27 +76,30 @@ class FunctionGenerator(SyntheticGenerator):
             Target vector of shape (n_samples,).
         """
         X = self.rng.random((self.n_samples, self.n_features))
+
+        # Use a 1D array for single-feature problems
+        x = X.ravel() if self.n_features == 1 else X
         noise = self.rng.normal(0, self.noise, self.n_samples)
         
         if self.function == "linear":
-            y = linear(X) + noise
+            y = linear(x) + noise
         elif self.function == "cubic":
-            y = cubic(X) + noise
+            y = cubic(x) + noise
         elif self.function == "polynomial":
-            y = polynomial(X) + noise
+            y = polynomial(x) + noise
         elif self.function == "sine":
-            y = sine(X) + noise
+            y = sine(x) + noise
         elif self.function == "cosine":
-            y = cosine(X) + noise
+            y = cosine(x) + noise
         elif self.function == "exponential":
-            y = exponential(X) + noise
+            y = exponential(x) + noise
         elif self.function == "logarithm":
-            y = logarithm(X) + noise
+            y = logarithm(x) + noise
         elif self.function == "sigmoid":
-            y = sigmoid(X) + noise
+            y = sigmoid(x) + noise
         elif self.function == "absolute":
-            y = absolute(X) + noise
+            y = absolute(x) + noise
         elif self.function == "step":
-            y = step(X) + noise
+            y = step(x) + noise
         
         return X, y
