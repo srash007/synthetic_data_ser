@@ -54,4 +54,32 @@ class HeteroscedasticGenerator(SyntheticGenerator):
         self.n_samples = n_samples
         self.n_features = n_features
         self.noise = noise
-        
+    
+    def generate(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Generate a synthetic heteroscedastic regression dataset.
+
+        Returns:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): Target vector of shape (n_samples,).
+        """
+
+        # Generate predictor variables
+        X = self.rng.random((self.n_samples, self.n_features))
+        x = X[:, 0]
+
+        # Compute deterministic signal
+        f = FUNCTIONS[self.function]
+        y = f(x)
+
+        # Heteroscedastic noise:
+        # Standard deviation increases with x
+        sigma = self.noise * (1 + 5 * x)
+
+        y += self.rng.normal(
+            loc=0.0,
+            scale=sigma,
+            size=self.n_samples,
+        )
+
+        return X, y

@@ -43,7 +43,7 @@ class MultiModalGenerator(SyntheticGenerator):
 
     def __init__(
         self,
-        function: str = "linear",
+        functions=("linear", "sine"),
         proportion: float = (0.5, 0.5),
         n_samples: int = 1000,
         n_features: int = 1,
@@ -51,7 +51,7 @@ class MultiModalGenerator(SyntheticGenerator):
         random_state: Optional[int] = None,
     ):
         super().__init__(random_state)
-        self.function = function.lower()
+        self.functions = functions
         self.proportion = proportion
         self.n_samples = n_samples
         self.n_features = n_features
@@ -75,18 +75,20 @@ class MultiModalGenerator(SyntheticGenerator):
 
         # Initialize the target vector.
         y = np.zeros(self.n_samples)
-
+        
         # Randomly assign each sample to one of the modes.
         labels = self.rng.choice(
-            self.n_modes,
+            len(self.functions),
             size=self.n_samples,
             p=self.proportion,
-            
         )
-        functions = FUNCTIONS[self.function]
-        # Generate target values independently for each mode.
-        for i, f in enumerate(self.functions):
+
+        for i, function_name in enumerate(self.functions):
+
+            f = FUNCTIONS[function_name]
+
             mask = labels == i
+
             y[mask] = f(x[mask])
 
         # Add Gaussian noise to the target values.

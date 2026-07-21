@@ -32,7 +32,6 @@ class FunctionGenerator(SyntheticGenerator):
 
     AVAILABLE_FUNCTIONS = (
         "linear",
-        "quadratic",
         "cubic",
         "polynomial",
         "sine",
